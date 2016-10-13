@@ -32,7 +32,7 @@ class PageView: UIScrollView {
     return button
   }()
 
-  lazy var activityIndicator: LoadingIndicator = LoadingIndicator()
+  lazy var activityIndicator: UIActivityIndicatorView = self.makeActivityIndicator()
 
   var image: LightboxImage
   var contentFrame = CGRect.zero
@@ -160,6 +160,17 @@ class PageView: UIScrollView {
     guard let videoURL = image.videoURL else { return }
 
     pageViewDelegate?.pageView(self, didTouchPlayButton: videoURL)
+  }
+
+  // MARK: - Controls
+
+  func makeActivityIndicator() -> UIActivityIndicatorView {
+    let view = UIActivityIndicatorView(activityIndicatorStyle: .WhiteLarge)
+    view.color = UIColor.blackColor()
+    LightboxConfig.LoadingIndicator.configure?(view)
+    view.startAnimating()
+
+    return view
   }
 }
 
