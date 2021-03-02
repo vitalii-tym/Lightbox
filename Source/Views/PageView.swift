@@ -22,8 +22,20 @@ class PageView: UIScrollView {
   lazy var playButton: UIButton = {
     let button = UIButton(type: .custom)
     button.frame.size = CGSize(width: 60, height: 60)
-    button.setBackgroundImage(AssetManager.image("lightbox_play"), for: UIControlState())
+    var buttonImage = AssetManager.image("lightbox_play")
+    
+    // Note by Elvis Nuñez on Mon 22 Jun 08:06
+    // When using SPM you might find that assets are note included. This is a workaround to provide default assets
+    // under iOS 13 so using SPM can work without problems.
+    if #available(iOS 13.0, *) {
+        if buttonImage == nil {
+            buttonImage = UIImage(systemName: "play.circle.fill")
+        }
+    }
+
+    button.setBackgroundImage(buttonImage, for: UIControl.State())
     button.addTarget(self, action: #selector(playButtonTouched(_:)), for: .touchUpInside)
+    button.tintColor = .white
 
     button.layer.shadowOffset = CGSize(width: 1, height: 1)
     button.layer.shadowColor = UIColor.gray.cgColor
@@ -33,7 +45,7 @@ class PageView: UIScrollView {
     return button
   }()
 
-  lazy var activityIndicator: LoadingIndicator = LoadingIndicator()
+  lazy var loadingIndicator: UIView = LightboxConfig.makeLoadingIndicator()
 
   var image: LightboxImage
   var contentFrame = CGRect.zero
@@ -51,20 +63,7 @@ class PageView: UIScrollView {
 
     configure()
 
-    activityIndicator.alpha = 1
-    self.image.addImageTo(imageView) { [weak self] image in
-      guard let strongSelf = self else {
-        return
-      }
-
-      strongSelf.isUserInteractionEnabled = true
-      strongSelf.configureImageView()
-      strongSelf.pageViewDelegate?.remoteImageDidLoad(image, imageView: strongSelf.imageView)
-
-      UIView.animate(withDuration: 0.4) {
-        strongSelf.activityIndicator.alpha = 0
-      }
-    }
+    fetchImage()
   }
 
   required init?(coder aDecoder: NSCoder) {
@@ -76,11 +75,9 @@ class PageView: UIScrollView {
   func configure() {
     addSubview(imageView)
 
-    if image.videoURL != nil {
-      addSubview(playButton)
-    }
+    updatePlayButton()
 
-    addSubview(activityIndicator)
+    addSubview(loadingIndicator)
 
     delegate = self
     isMultipleTouchEnabled = true
@@ -100,9 +97,42 @@ class PageView: UIScrollView {
     tapRecognizer.require(toFail: doubleTapRecognizer)
   }
 
+  // MARK: - Update
+  func update(with image: LightboxImage) {
+    self.image = image
+    updatePlayButton()
+    fetchImage()
+  }
+
+  func updatePlayButton () {
+    if self.image.videoURL != nil && !subviews.contains(playButton) {
+      addSubview(playButton)
+    } else if self.image.videoURL == nil && subviews.contains(playButton) {
+      playButton.removeFromSuperview()
+    }
+  }
+
+  // MARK: - Fetch
+  private func fetchImage () {
+    loadingIndicator.alpha = 1
+    self.image.addImageTo(imageView) { [weak self] image in
+      guard let self = self else {
+        return
+      }
+
+      self.isUserInteractionEnabled = true
+      self.configureImageView()
+      self.pageViewDelegate?.remoteImageDidLoad(image, imageView: self.imageView)
+
+      UIView.animate(withDuration: 0.4) {
+        self.loadingIndicator.alpha = 0
+      }
+    }
+  }
+
   // MARK: - Recognizers
 
-  func scrollViewDoubleTapped(_ recognizer: UITapGestureRecognizer) {
+  @objc func scrollViewDoubleTapped(_ recognizer: UITapGestureRecognizer) {
     let pointInView = recognizer.location(in: imageView)
     let newZoomScale = zoomScale > minimumZoomScale
       ? minimumZoomScale
@@ -118,7 +148,7 @@ class PageView: UIScrollView {
     zoom(to: rectToZoomTo, animated: true)
   }
 
-  func viewTapped(_ recognizer: UITapGestureRecognizer) {
+  @objc func viewTapped(_ recognizer: UITapGestureRecognizer) {
     pageViewDelegate?.pageViewDidTouch(self)
   }
 
@@ -127,7 +157,7 @@ class PageView: UIScrollView {
   override func layoutSubviews() {
     super.layoutSubviews()
 
-    activityIndicator.center = imageView.center
+    loadingIndicator.center = imageView.center
     playButton.center = imageView.center
   }
 
@@ -177,20 +207,10 @@ class PageView: UIScrollView {
 
   // MARK: - Action
 
-  func playButtonTouched(_ button: UIButton) {
+  @objc func playButtonTouched(_ button: UIButton) {
     guard let videoURL = image.videoURL else { return }
 
     pageViewDelegate?.pageView(self, didTouchPlayButton: videoURL as URL)
-  }
-
-  // MARK: - Controls
-
-  func makeActivityIndicator() -> UIActivityIndicatorView {
-    let view = UIActivityIndicatorView(activityIndicatorStyle: .white)
-    LightboxConfig.LoadingIndicator.configure?(view)
-    view.startAnimating()
-
-    return view
   }
 }
 
@@ -198,7 +218,7 @@ class PageView: UIScrollView {
 
 extension PageView: LayoutConfigurable {
 
-  func configureLayout() {
+  @objc func configureLayout() {
     contentFrame = frame
     contentSize = frame.size
     imageView.frame = frame
